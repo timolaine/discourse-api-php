@@ -94,39 +94,77 @@ class DiscourseAPI
     /**
      * group
      *
-     * @param string $groupname         name of group
-     * @param string $usernames     users to add to group
+     * @param string $groupname     name of group to be created
+     * @param string $usernames     users in the group
      *
      * @return mixed HTTP return code and API return object
      */
 
     function group($groupname, $usernames = array())
     {
-        $obj = $this->_getRequest("/admin/groups.json");
+	$groupId = $this->getGroupIdByGroupName($groupname);
+        if ($groupId) {
+            return false;
+        }
+
+        $params = array(
+            'group' => array(
+                'name' => $groupname,
+                'usernames' => implode(',', $usernames),
+		'alias_level' => '0'
+            )
+        );
+
+        return $this->_postRequest('/admin/groups', $params);
+    }
+
+     /**
+     * addUserToGroup
+     *
+     * @param string $groupname    name of group
+     * @param string $username     user to add to the group
+     *
+     * @return mixed HTTP return code and API return object
+     */
+
+    function addUserToGroup($groupname, $username)
+    {
+	$groupId = $this->getGroupIdByGroupName($groupname);
+        if (!$groupId) {
+            $this->group($groupname, array($username));
+        } else {
+            $user = $this->getUserByUserName($username)->apiresult->user;
+            $params = array(
+                'group_id' => $groupId
+            );
+             return $this->_postRequest('/admin/users/' . $user->id . '/groups', $params);
+        }
+    }
+
+    /**
+     * getGroupIdByGroupName
+     *
+     * @param string $groupname    name of group
+     *
+     * @return mixed id of the group, or false if nonexistent
+     */
+
+    function getGroupIdByGroupName($groupname)
+    {
+        $obj = $this->getGroups();
         if ($obj->http_code != 200) {
             return false;
         }
 
         foreach($obj->apiresult as $group) {
             if($group->name === $groupname) {
-                $groupId = $group->id;
+                $groupId = intval($group->id);
                 break;
             }
             $groupId = false;
         }
 
-        $params = array(
-            'group' => array(
-                'name' => $groupname,
-                'usernames' => implode(',', $usernames)
-            )
-        );
-
-        if($groupId) {
-            return $this->_putRequest('/admin/groups/' . $groupId, $params);
-        } else {
-            return $this->_postRequest('/admin/groups', $params);
-        }
+	return $groupId;
     }
 
     /**
@@ -196,6 +234,26 @@ class DiscourseAPI
     }
 
     /**
+     * getUserByEmail
+     *
+     * @param string $email     email of user
+     *
+     * @return mixed user object
+     */
+
+    function getUserByEmail($email)
+    {
+        $users = $this->_getRequest("/admin/users/list/active.json");
+        foreach($users->apiresult as $user) {
+            if(strtolower($user->email) === strtolower($email)) {
+                return $user;
+            }
+        }
+	
+        return false;
+    }
+
+    /**
      * getUsernameByEmail
      *
      * @param string $email     email of user
@@ -207,7 +265,7 @@ class DiscourseAPI
     {
         $users = $this->_getRequest("/admin/users/list/active.json");
         foreach($users->apiresult as $user) {
-            if($user->email === $email) {
+            if(strtolower($user->email) === strtolower($email)) {
                 return $user->username;
             }
         }
